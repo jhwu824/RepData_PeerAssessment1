@@ -3,23 +3,97 @@ title: "Reproducible Research: Peer Assessment 1"
 output: 
   html_document:
     keep_md: true
+    toc: true
 ---
 
+```{r include = FALSE}
+library(dplyr)
+library(ggplot2)
+```
 
 ## Loading and preprocessing the data
-
-
+For this analysis I've loaded the *dplyr* and *ggplot2* libraries. To start, I simply read the activity monitoring data from a csv file, with no further processing:
+```{r echo = TRUE}
+activity_raw <- tbl_df(read.csv('activity/activity.csv'))
+print(activity_raw)
+```
 
 ## What is mean total number of steps taken per day?
-
-
+One way to explore the dataset is by considering the steps taken each day:
+```{r echo = TRUE}
+date_summary <- activity_raw %>% group_by(date) %>% 
+    summarise(steps = sum(steps))
+print(date_summary)
+```
+From there, I can plot a histogram and find middle values for steps taken per day:
+```{r echo = TRUE}
+steps_range <- diff(range(date_summary$steps, na.rm = TRUE))
+g <- ggplot(date_summary, aes(steps)) 
+g + geom_bar(binwidth = steps_range/20) + theme_bw()
+```
+```{r echo = TRUE}
+as.data.frame(summarise(date_summary
+    , mean = mean(steps, na.rm = TRUE)
+    , median = median(steps, na.rm = TRUE) 
+))
+```
 
 ## What is the average daily activity pattern?
+Another useful view is activity during different time intervals throughout the day:
+```{r echo = TRUE}
+interval_summary <- activity_raw %>% group_by(interval) %>% 
+    summarise(avg.steps = mean(steps, na.rm = TRUE))
 
+g <- ggplot(interval_summary, aes(interval, avg.steps)) 
+g + geom_line() + labs(x = '5 minute interval', y = 'average steps') +
+    theme_bw()
+```
+From here I can see that the maximum average steps occurs at interval 1705:
+```{r echo = TRUE}
+as.data.frame(interval_summary[max(interval_summary$avg.steps
+                                   , na.rm = TRUE), ])
+```
 
 
 ## Imputing missing values
-
-
+The dataset has many missing values, which can introduce bias. One way to compensate for these missing values is by filling in with the average steps for that interval. 
+```{r echo = TRUE}
+sum(is.na(activity_raw))
+```
+```{r echo = TRUE}
+processed_df <- activity_raw
+processed_df$id <- seq(1:nrow(processed_df))
+temp <- tbl_df(merge(processed_df[is.na(processed_df), ], interval_summary, 
+                     by = 'interval', all.x = TRUE)) %>% arrange(id)
+processed_df[is.na(processed_df), 1] <- temp$avg.steps
+processed_df
+```
+Now I can make a histogram and view middle values as before:
+```{r echo = TRUE}
+date_summary2 <- processed_df %>% group_by(date) %>% 
+    summarise(steps = sum(steps))
+g <- ggplot(date_summary2, aes(steps))
+g + geom_bar(binwidth = steps_range/20) + theme_bw()
+as.data.frame(summarise(date_summary2
+    , mean = mean(steps, na.rm = TRUE)
+    , median = median(steps, na.rm = TRUE) 
+))
+```
+The histogram has skewed slightly right, and the median has increased slightly. 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+Since people tend to have different behaviors on weekdays and weekends, we can also see how activity differs on weekdays and weekends:
+```{r echo = TRUE}
+processed_df$date <- as.Date(processed_df$date)
+processed_df$day_descrip <- sapply(processed_df$date, function(x) {
+    ifelse(weekdays(x) %in% c('Saturday', 'Sunday'), 'weekend', 'weekday')
+})
+processed_df
+```
+```{r echo = TRUE}
+interval_summary2 <- processed_df %>% group_by(interval, day_descrip) %>% 
+    summarise(avg.steps = mean(steps, na.rm = TRUE))
+g <- ggplot(interval_summary2, aes(interval, avg.steps)) 
+g + geom_line() + labs(x = '5 minute interval', y = 'average steps') +  
+    facet_wrap(~day_descrip, ncol = 1) + theme_bw()
+```
